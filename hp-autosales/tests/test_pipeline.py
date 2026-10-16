@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ.pop("ANTHROPIC_API_KEY", None)
 
-from hpsales import cli, content, db, finder  # noqa: E402
+from hpsales import cli, content, db, discover, finder  # noqa: E402
 from hpsales.config import settings  # noqa: E402
 
 SAMPLE = json.loads((ROOT / "samples" / "sample_place.json").read_text(encoding="utf-8"))
@@ -118,6 +118,42 @@ class PipelineTest(unittest.TestCase):
             cli.main(["send", "--live"])
             smtp.return_value.send_message.assert_not_called()
         self.assertEqual(db.get(conn, row["place_id"])["status"], "opted_out")
+
+
+class DiscoverTest(unittest.TestCase):
+    T = {**discover.DEFAULTS, "areas": ["A区", "B区"], "categories": ["ラーメン", "カフェ"],
+         "max_queries_per_run": 3, "requery_days": 30}
+
+    def test_plan_prefers_unsearched_then_oldest(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 10, 16, tzinfo=timezone.utc)
+        history = {
+            "A区 ラーメン": "2026-10-10T00:00:00+00:00",  # 最近 → 対象外
+            "A区 カフェ": "2026-08-01T00:00:00+00:00",    # 古い → 再検索
+            "B区 ラーメン": "2026-07-01T00:00:00+00:00",  # もっと古い
+        }
+        self.assertEqual(discover.plan(self.T, history, now=now),
+                         ["B区 カフェ", "B区 ラーメン", "A区 カフェ"])
+        self.assertEqual(discover.plan(self.T, history, limit=1, now=now), ["B区 カフェ"])
+
+
+class AutoTest(PipelineTest):
+    def test_auto_runs_queries_and_skips_known(self):
+        cfg = Path(self.tmp.name) / "targets.json"
+        cfg.write_text(json.dumps({"areas": ["浦和区"], "categories": ["ラーメン", "カフェ"]}), encoding="utf-8")
+        with mock.patch("hpsales.finder.requests.get", return_value=FakeResp(SAMPLE)) as get:
+            cli.main(["auto", "--targets", str(cfg)])
+            conn = db.connect()
+            self.assertEqual(set(db.search_history(conn)), {"浦和区 ラーメン", "浦和区 カフェ"})
+            self.assertEqual(len(db.all_leads(conn)), 1)
+            self.assertEqual(get.call_count, 1)  # 2回目の検索では既知の店の詳細取得を省く
+            self.assertEqual(db.all_leads(conn)[0]["status"], "deployed")
+            cli.main(["auto", "--targets", str(cfg)])  # 全部実施済み → 何も検索しない
+            self.assertEqual(get.call_count, 1)
+
+    test_full_flow = None
+    test_optout_blocks_send = None
+    test_classify = None
 
 
 if __name__ == "__main__":

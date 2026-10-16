@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS leads (
     updated_at      TEXT,
     sent_at         TEXT
 );
+CREATE TABLE IF NOT EXISTS search_log (
+    query       TEXT PRIMARY KEY,
+    last_run    TEXT,
+    found       INTEGER
+);
 CREATE TABLE IF NOT EXISTS suppression (
     email       TEXT PRIMARY KEY,
     reason      TEXT,
@@ -122,6 +127,21 @@ def suppress(conn: sqlite3.Connection, email: str, reason: str = "opt-out") -> N
     )
     conn.execute("UPDATE leads SET status='opted_out', updated_at=? WHERE lower(email)=?", (now(), email.lower()))
     conn.commit()
+
+
+def known_place_ids(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT place_id FROM leads")}
+
+
+def log_search(conn: sqlite3.Connection, query: str, found: int) -> None:
+    conn.execute("INSERT OR REPLACE INTO search_log (query, last_run, found) VALUES (?, ?, ?)",
+                 (query, now(), found))
+    conn.commit()
+
+
+def search_history(conn: sqlite3.Connection) -> dict[str, str]:
+    """query → 最終実行日時"""
+    return {r["query"]: r["last_run"] for r in conn.execute("SELECT query, last_run FROM search_log")}
 
 
 def sent_today(conn: sqlite3.Connection) -> int:

@@ -105,11 +105,15 @@ def to_lead(place: dict[str, Any], query: str) -> dict[str, Any]:
 
 
 def find_leads(query: str, max_results: int = 60, min_reviews: int = 5,
-               include_sns: bool = True) -> list[dict[str, Any]]:
-    """営業対象になりそうな店を返す。口コミが少なすぎる店（休眠・新規すぎ）は除外。"""
+               include_sns: bool = True, skip_ids: set[str] | None = None) -> list[dict[str, Any]]:
+    """営業対象になりそうな店を返す。口コミが少なすぎる店（休眠・新規すぎ）は除外。
+    skip_ids（登録済みの店）は詳細取得を省いて API 料金を節約する。"""
     targets = {"none", "sns_only", "portal_only"} if include_sns else {"none"}
+    skip_ids = skip_ids or set()
     leads = []
     for p in search(query, max_results):
+        if p["id"] in skip_ids:
+            continue
         if p.get("businessStatus", "OPERATIONAL") != "OPERATIONAL":
             continue
         if classify_website(p.get("websiteUri")) not in targets:

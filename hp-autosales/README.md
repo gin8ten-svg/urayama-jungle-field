@@ -59,7 +59,30 @@ python -m hpsales skip <slug> --reason "閉店"
 
 ステータスの流れ: `new → built → deployed → drafted → approved → sent`（`skipped` / `opted_out`）
 
-毎日自動で回したい場合は cron 等で `run` を実行し、`review`/`approve`/`send --live` だけ手で行うのがおすすめです。
+## お店探しの自動化（auto）
+
+検索語を毎回考えなくても、**エリア × 業種** の組み合わせを自動で順番に検索します。
+
+```bash
+cp targets.example.json targets.json   # areas（地域）と categories（業種）を編集
+python -m hpsales auto --plan          # 今回検索する予定を確認（API料金はかからない）
+python -m hpsales auto                 # 検索 → サイト生成 → 公開 → 下書き まで自動
+python -m hpsales auto --search-only   # 検索だけ
+```
+
+- まだ検索していない組み合わせから順に、1回 `max_queries_per_run` 件（初期値10）ずつ検索します
+- すべて検索し終わったら、`requery_days`（初期値60日）経ったものから再検索して新しく出来た店を拾います
+- 登録済みの店は詳細情報を取り直さないので、API料金が無駄にかかりません
+- 業種の初期値は、HPを持っていないことが多い個人店（ラーメン・定食屋・美容室・整体・学習塾など20種）
+
+毎日自動で回すには `scripts/daily.sh` を cron に登録します（送信まではしません。届いた下書きを `review` → `approve` → `send --live`）。
+
+```
+0 7 * * * /path/to/hp-autosales/scripts/daily.sh
+```
+
+API料金の目安：1回の `auto` で「検索 最大 10件×3ページ」＋「新しく見つかった店の数だけ詳細取得」。
+`max_queries_per_run` を減らせば料金も減ります。
 
 ## メールアドレス問題（重要）
 
@@ -100,6 +123,7 @@ hpsales/
   templates/site.html.j2
   deploy.py    Netlify への公開
   mailer.py    メール本文・SMTP送信
+  discover.py  エリア×業種から検索語を作り、検索順を決める
   db.py        SQLite（data/leads.db）でリード管理
   cli.py       コマンド
 tests/         外部APIをモックした通しテスト（python -m unittest discover -s tests）

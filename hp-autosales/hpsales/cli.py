@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import content, db, deploy, finder, mailer, render
+from . import content, db, deploy, discover, finder, mailer, render
 from .config import ROOT, settings
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -30,16 +30,21 @@ def _targets(conn, keys: list[str], all_flag: bool, statuses: list[str]):
 
 
 # ---------------------------------------------------------------- search
-def cmd_search(args) -> None:
-    conn = db.connect()
-    leads = finder.find_leads(args.query, args.max, args.min_reviews, include_sns=not args.no_sns)
-    new = 0
+def search_and_store(conn, query: str, max_results: int, min_reviews: int, include_sns: bool) -> int:
+    leads = finder.find_leads(query, max_results, min_reviews, include_sns=include_sns,
+                              skip_ids=db.known_place_ids(conn))
     for lead in leads:
         lead["slug"] = finder.slugify(lead["name"], lead["place_id"])
-        new += db.upsert_lead(conn, lead)
-    print(f"「{args.query}」: HPなし候補 {len(leads)} 件（新規 {new} 件）")
+        db.upsert_lead(conn, lead)
+    db.log_search(conn, query, len(leads))
+    print(f"「{query}」: 新しいHPなし候補 {len(leads)} 件")
     for lead in leads:
         print(f"  [{lead['web_status']:<11}] {lead['name']}  ★{lead['rating']} ({lead['review_count']}件)  {lead['slug']}")
+    return len(leads)
+
+
+def cmd_search(args) -> None:
+    search_and_store(db.connect(), args.query, args.max, args.min_reviews, not args.no_sns)
 
 
 def cmd_list(args) -> None:
@@ -250,7 +255,36 @@ def cmd_optout(args) -> None:
 def cmd_run(args) -> None:
     """検索 → サイト生成 → 公開 → 下書き作成 まで。送信は人の承認後。"""
     cmd_search(args)
+    process_pipeline(db.connect())
+
+
+def cmd_auto(args) -> None:
+    """targets.json のエリア × 業種を順番に自動検索し、続けてサイト生成〜下書きまで行う。"""
+    targets = discover.load_targets(Path(args.targets) if args.targets else None)
     conn = db.connect()
+    queries = discover.plan(targets, db.search_history(conn), args.max_queries)
+    total = len(discover.all_queries(targets))
+    done = len(set(db.search_history(conn)) & set(discover.all_queries(targets)))
+    print(f"検索語 {total} 通り中 {done} 通り実施済み。今回 {len(queries)} 件を検索します")
+    if args.plan:
+        for q in queries:
+            print(f"  {q}")
+        return
+    found = 0
+    for q in queries:
+        try:
+            found += search_and_store(conn, q, targets["max_results"], targets["min_reviews"],
+                                      targets["include_sns"])
+        except Exception as e:
+            print(f"  検索失敗: {q}: {e}")
+    print(f"\n新しい候補 合計 {found} 件")
+    if not queries:
+        print("すべての検索語が最近実施済みです（requery_days を過ぎると再検索します）")
+    if not args.search_only:
+        process_pipeline(conn)
+
+
+def process_pipeline(conn) -> None:
     for row in db.by_status(conn, ["new"]):
         try:
             build_one(conn, row)
@@ -295,6 +329,13 @@ def main(argv: list[str] | None = None) -> None:
 
     sp = sub.add_parser("search", help="HPなしの店舗を検索して登録"); add_search_args(sp); sp.set_defaults(f=cmd_search)
     sp = sub.add_parser("run", help="検索→生成→公開→下書き まで一括"); add_search_args(sp); sp.set_defaults(f=cmd_run)
+
+    sp = sub.add_parser("auto", help="targets.json のエリア×業種を自動で検索→生成→公開→下書き")
+    sp.add_argument("--targets", help="設定ファイル（既定: targets.json）")
+    sp.add_argument("--max-queries", type=int, help="今回検索する件数（既定: max_queries_per_run）")
+    sp.add_argument("--search-only", action="store_true", help="検索だけ行う")
+    sp.add_argument("--plan", action="store_true", help="検索予定を表示するだけ（API を使わない）")
+    sp.set_defaults(f=cmd_auto)
 
     sp = sub.add_parser("list", help="リード一覧"); sp.add_argument("--status"); sp.set_defaults(f=cmd_list)
     sp = sub.add_parser("export", help="CSV に書き出し"); sp.add_argument("file"); sp.set_defaults(f=cmd_export)
