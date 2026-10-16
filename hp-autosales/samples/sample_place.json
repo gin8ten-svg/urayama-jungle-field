@@ -1,0 +1,26 @@
+{
+  "id": "ChIJ_sample_demo_0001",
+  "displayName": {"text": "らーめん 浦和屋", "languageCode": "ja"},
+  "formattedAddress": "日本、〒330-0062 埼玉県さいたま市浦和区仲町1丁目",
+  "nationalPhoneNumber": "048-000-0000",
+  "rating": 4.3,
+  "userRatingCount": 128,
+  "googleMapsUri": "https://maps.google.com/?cid=0",
+  "primaryType": "ramen_restaurant",
+  "primaryTypeDisplayName": {"text": "ラーメン屋", "languageCode": "ja"},
+  "businessStatus": "OPERATIONAL",
+  "regularOpeningHours": {"weekdayDescriptions": [
+    "月曜日: 11時00分～15時00分, 17時30分～21時00分",
+    "火曜日: 定休日",
+    "水曜日: 11時00分～15時00分, 17時30分～21時00分",
+    "木曜日: 11時00分～15時00分, 17時30分～21時00分",
+    "金曜日: 11時00分～15時00分, 17時30分～22時00分",
+    "土曜日: 11時00分～21時00分",
+    "日曜日: 11時00分～20時00分"
+  ]},
+  "reviews": [
+    {"rating": 5, "text": {"text": "鶏白湯のスープが濃厚なのにしつこくない。味玉も絶品。店主さんが気さくで居心地がいいです。"}},
+    {"rating": 4, "text": {"text": "昼は行列ができるけど回転が早い。カウンターだけなので一人でも入りやすい。"}},
+    {"rating": 5, "text": {"text": "限定のつけ麺が美味しかった。麺が自家製らしくもちもち。"}}
+  ]
+}
