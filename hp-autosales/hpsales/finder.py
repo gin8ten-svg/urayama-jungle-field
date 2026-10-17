@@ -49,6 +49,29 @@ def classify_website(url: str | None) -> str:
     return "own"
 
 
+HINTS = {
+    "billing": "このプロジェクトに請求先アカウントがリンクされていません（Google Cloud →「お支払い」→ 請求先アカウントをリンク）",
+    "has not been used": "このプロジェクトで Places API (New) が有効になっていません",
+    "is disabled": "このプロジェクトで Places API (New) が有効になっていません",
+    "blocked": "APIキーの「APIの制限」で Places API (New) が許可されていません",
+    "API key not valid": "APIキーが間違っています（.env の GOOGLE_MAPS_API_KEY を確認）",
+    "referer": "APIキーに「ウェブサイトの制限」が付いています（アプリケーションの制限を「なし」に）",
+    "IP address": "APIキーに「IPアドレスの制限」が付いています（アプリケーションの制限を「なし」に）",
+}
+
+
+def _check(r: requests.Response) -> None:
+    """エラー時に Google からの理由と、日本語の対処法を出す。"""
+    if r.ok:
+        return
+    try:
+        message = r.json().get("error", {}).get("message", "")
+    except ValueError:
+        message = r.text[:300]
+    hint = next((h for k, h in HINTS.items() if k.lower() in message.lower()), "")
+    raise RuntimeError(f"Google API エラー {r.status_code}: {message}" + (f"\n  → {hint}" if hint else ""))
+
+
 def _headers(fields: str) -> dict[str, str]:
     if not settings.google_maps_api_key:
         raise SystemExit("GOOGLE_MAPS_API_KEY が設定されていません（.env を確認してください）")
@@ -74,7 +97,7 @@ def search(query: str, max_results: int = 60, guard=_noop_guard) -> list[dict[st
     while len(results) < max_results:
         guard("search")
         r = requests.post(SEARCH_URL, json=body, headers=_headers(SEARCH_FIELDS), timeout=30)
-        r.raise_for_status()
+        _check(r)
         data = r.json()
         results.extend(data.get("places", []))
         token = data.get("nextPageToken")
@@ -93,7 +116,7 @@ def details(place_id: str, guard=_noop_guard) -> dict[str, Any]:
         headers=_headers(DETAIL_FIELDS),
         timeout=30,
     )
-    r.raise_for_status()
+    _check(r)
     return r.json()
 
 

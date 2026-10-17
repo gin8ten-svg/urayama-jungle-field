@@ -20,6 +20,7 @@ SAMPLE = json.loads((ROOT / "samples" / "sample_place.json").read_text(encoding=
 class FakeResp:
     def __init__(self, data, status=200):
         self._d, self.status_code = data, status
+        self.ok = status < 400
 
     def json(self):
         return self._d
@@ -72,6 +73,12 @@ class PipelineTest(unittest.TestCase):
         for p in reversed(self.patches):
             p.stop()
         self.tmp.cleanup()
+
+    def test_api_error_shows_reason(self):
+        err = FakeResp({"error": {"message": "This API method requires billing to be enabled."}}, 403)
+        with mock.patch("hpsales.finder.requests.post", return_value=err):
+            with self.assertRaisesRegex(RuntimeError, "請求先アカウント"):
+                finder.search("x")
 
     def test_classify(self):
         self.assertEqual(finder.classify_website(None), "none")
