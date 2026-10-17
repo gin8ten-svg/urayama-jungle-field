@@ -29,9 +29,33 @@ python -m hpsales demo    # APIキー無しで動作確認（output/ にサイ�
 | 用途 | 取得先 | 備考 |
 |---|---|---|
 | 店舗検索・口コミ | Google Cloud で **Places API (New)** を有効化して API キー発行 | 従量課金（月ごとの無料枠あり）。料金は Google Maps Platform の料金ページで確認 |
-| 文章生成 | Claude API キー（platform.claude.com） | 未設定ならテンプレ文章で動く |
+| 文章生成 | Claude API キー（platform.claude.com） | 任意。無しなら Claude Code に書いてもらう（無料モード） |
 | サイト公開 | Netlify の Personal access token | 無料プランで可。または `PREVIEW_BASE_URL` で自前の公開先を指定 |
 | メール送信 | Gmail ならアプリパスワード | 独自ドメインのメールの方が迷惑メール判定されにくい |
+
+## 無料で使う（0円モード）
+
+| 部分 | 無料にする方法 |
+|---|---|
+| 店舗検索（Google） | 無料枠（月1,000回ずつ）の範囲で使う。ツールが月900回で自動停止 |
+| 文章作成（Claude） | API キーを入れない → Claude Code（このチャット）に書いてもらう |
+| サイト公開 | Netlify の無料プラン（`〇〇.netlify.app` のURL） |
+| メール送信 | Gmail（アプリパスワード） |
+
+**Google はクレジットカードの登録が必要**です（無料枠内なら請求は0円）。念のため、
+Google Cloud の「APIとサービス → 割り当て」で Places API の1日の上限を **30回** などに下げておくと、
+ツールの外でも超過しません（30回×31日＝930回）。今月の利用回数は `python -m hpsales usage` で確認できます。
+
+### 文章を Claude Code に書いてもらう流れ
+
+```bash
+python -m hpsales auto                 # 検索。文章待ちの店は output/briefs.json に書き出される
+#  ↓ Claude Code に「briefs.json の文章を書いて」と頼む → output/contents.json ができる
+python -m hpsales import-content output/contents.json   # サイト化 → 公開
+python -m hpsales draft --all          # メール下書き（Claude が書いた件名・冒頭文を使う）
+```
+
+`build --all --template` を使えば、Claude を使わず定型文でサイトを作ることもできます。
 
 ## 使い方
 

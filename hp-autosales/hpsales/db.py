@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS leads (
     site_path       TEXT,
     preview_url     TEXT,
     netlify_site_id TEXT,
+    content_json    TEXT,          -- サイト文章とメール冒頭文（Claude が作成）
     email_subject   TEXT,
     email_body      TEXT,
     status          TEXT NOT NULL DEFAULT 'new',
@@ -40,6 +41,12 @@ CREATE TABLE IF NOT EXISTS leads (
     created_at      TEXT,
     updated_at      TEXT,
     sent_at         TEXT
+);
+CREATE TABLE IF NOT EXISTS api_usage (
+    month   TEXT,
+    sku     TEXT,
+    count   INTEGER,
+    PRIMARY KEY (month, sku)
 );
 CREATE TABLE IF NOT EXISTS search_log (
     query       TEXT PRIMARY KEY,
@@ -63,6 +70,10 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(leads)")}
+    for col in ("netlify_site_id", "content_json"):  # 古いDBへの列追加
+        if col not in cols:
+            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} TEXT")
     return conn
 
 
@@ -127,6 +138,26 @@ def suppress(conn: sqlite3.Connection, email: str, reason: str = "opt-out") -> N
     )
     conn.execute("UPDATE leads SET status='opted_out', updated_at=? WHERE lower(email)=?", (now(), email.lower()))
     conn.commit()
+
+
+def usage(conn: sqlite3.Connection, sku: str) -> int:
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    row = conn.execute("SELECT count FROM api_usage WHERE month=? AND sku=?", (month, sku)).fetchone()
+    return row[0] if row else 0
+
+
+def consume(conn: sqlite3.Connection, sku: str, limit: int) -> bool:
+    """1回分を記録する。上限に達していたら記録せず False。"""
+    if usage(conn, sku) >= limit:
+        return False
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    conn.execute(
+        "INSERT INTO api_usage (month, sku, count) VALUES (?, ?, 1) "
+        "ON CONFLICT(month, sku) DO UPDATE SET count = count + 1",
+        (month, sku),
+    )
+    conn.commit()
+    return True
 
 
 def known_place_ids(conn: sqlite3.Connection) -> set[str]:

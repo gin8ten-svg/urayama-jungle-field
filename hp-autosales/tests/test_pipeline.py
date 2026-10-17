@@ -43,6 +43,12 @@ def fake_post(url, **kw):
     raise AssertionError(url)
 
 
+def fake_claude(system, user, schema):
+    if schema is content.EMAIL_SCHEMA:
+        return {"subject": "件名", "opening": "突然のご連絡失礼いたします。"}
+    return content._fallback_site_content({"name": "テスト", "category": "ラーメン屋"})
+
+
 class PipelineTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -56,7 +62,8 @@ class PipelineTest(unittest.TestCase):
             mock.patch("hpsales.finder.requests.post", side_effect=fake_post),
             mock.patch("hpsales.finder.requests.get", return_value=FakeResp(SAMPLE)),
             mock.patch("hpsales.deploy.requests.post", side_effect=fake_post),
-            mock.patch("hpsales.content._has_credentials", return_value=False),
+            mock.patch("hpsales.content.has_credentials", return_value=True),
+            mock.patch("hpsales.content._call_claude", side_effect=fake_claude),
         ]
         for p in self.patches:
             p.start()
@@ -154,6 +161,48 @@ class AutoTest(PipelineTest):
     test_full_flow = None
     test_optout_blocks_send = None
     test_classify = None
+
+    def test_manual_content_mode_without_api_key(self):
+        """APIキー無し: briefs.json を書き出し → 文章を取り込むとサイト化・公開される"""
+        with mock.patch("hpsales.content.has_credentials", return_value=False):
+            cli.main(["run", "浦和 ラーメン"])
+            conn = db.connect()
+            row = db.all_leads(conn)[0]
+            self.assertEqual(row["status"], "new")
+            briefs = json.loads(settings.briefs_path.read_text(encoding="utf-8"))
+            self.assertEqual(briefs["shops"][0]["slug"], row["slug"])
+            self.assertIn("email_opening", briefs["schema"]["properties"])
+
+            c = {**content._fallback_site_content(dict(row)), "theme": "unknown",
+                 "email_subject": "AIが書いた件名", "email_opening": "AIが書いた冒頭"}
+            f = Path(self.tmp.name) / "contents.json"
+            f.write_text(json.dumps({row["slug"]: c}, ensure_ascii=False), encoding="utf-8")
+            cli.main(["import-content", str(f)])
+            row = db.get(conn, row["slug"])
+            self.assertEqual(row["status"], "deployed")
+            self.assertEqual(json.loads(row["content_json"])["theme"], "warm")
+
+            cli.main(["set-email", row["slug"], "shop@example.com", "--source", "instagram"])
+            cli.main(["draft", "--all"])
+            row = db.get(conn, row["slug"])
+            self.assertEqual(row["email_subject"], "AIが書いた件名")
+            self.assertIn("AIが書いた冒頭", row["email_body"])
+
+    def test_quota_stops_api_calls(self):
+        cfg = Path(self.tmp.name) / "targets.json"
+        cfg.write_text(json.dumps({"areas": ["浦和区"], "categories": ["ラーメン", "カフェ"]}), encoding="utf-8")
+        with mock.patch.multiple(settings, places_search_monthly_limit=1):
+            cli.main(["auto", "--targets", str(cfg), "--search-only"])
+            conn = db.connect()
+            self.assertEqual(db.usage(conn, "search"), 1)
+            self.assertEqual(list(db.search_history(conn)), ["浦和区 ラーメン"])  # 2件目は上限で止まる
+        used = db.usage(conn, "details")
+        with mock.patch.multiple(settings, places_details_monthly_limit=used, places_search_monthly_limit=99):
+            with mock.patch.object(db, "known_place_ids", return_value=set()), \
+                 mock.patch("hpsales.finder.requests.get") as get:
+                cli.main(["search", "別の検索"])  # 詳細取得が必要だが上限なので呼ばない
+                get.assert_not_called()
+            self.assertEqual(db.usage(conn, "details"), used)
 
 
 if __name__ == "__main__":

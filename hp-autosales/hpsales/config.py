@@ -29,6 +29,9 @@ def _env(key: str, default: str = "") -> str:
 @dataclass
 class Settings:
     google_maps_api_key: str = field(default_factory=lambda: _env("GOOGLE_MAPS_API_KEY"))
+    # 無料枠を超えないための月間上限（Google の無料枠は SKU ごとに月1,000回）
+    places_search_monthly_limit: int = field(default_factory=lambda: int(_env("PLACES_SEARCH_MONTHLY_LIMIT", "900")))
+    places_details_monthly_limit: int = field(default_factory=lambda: int(_env("PLACES_DETAILS_MONTHLY_LIMIT", "900")))
     anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-opus-5-5"))
 
     # 送信者情報（特定電子メール法で表示が義務付けられている項目）
@@ -56,6 +59,7 @@ class Settings:
     preview_base_url: str = field(default_factory=lambda: _env("PREVIEW_BASE_URL"))
 
     db_path: Path = field(default_factory=lambda: ROOT / _env("DB_PATH", "data/leads.db"))
+    briefs_path: Path = field(default_factory=lambda: ROOT / "output" / "briefs.json")
     sites_dir: Path = field(default_factory=lambda: ROOT / "output" / "sites")
     outbox_dir: Path = field(default_factory=lambda: ROOT / "output" / "outbox")
 

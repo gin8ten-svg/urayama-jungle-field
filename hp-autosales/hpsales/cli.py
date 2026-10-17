@@ -30,9 +30,26 @@ def _targets(conn, keys: list[str], all_flag: bool, statuses: list[str]):
 
 
 # ---------------------------------------------------------------- search
+def quota_guard(conn):
+    """Google の無料枠を超えないよう、API を呼ぶ前に今月の回数を数える。"""
+    limits = {"search": settings.places_search_monthly_limit, "details": settings.places_details_monthly_limit}
+
+    def guard(sku: str) -> None:
+        if not db.consume(conn, sku, limits[sku]):
+            raise finder.QuotaExceeded(
+                f"今月の無料枠の上限に達したので止めました（{sku}: {limits[sku]}回）。来月また動きます")
+    return guard
+
+
 def search_and_store(conn, query: str, max_results: int, min_reviews: int, include_sns: bool) -> int:
-    leads = finder.find_leads(query, max_results, min_reviews, include_sns=include_sns,
-                              skip_ids=db.known_place_ids(conn))
+    try:
+        leads = finder.find_leads(query, max_results, min_reviews, include_sns=include_sns,
+                                  skip_ids=db.known_place_ids(conn), guard=quota_guard(conn))
+    except finder.QuotaExceeded as e:
+        for lead in getattr(e, "partial", []):  # 上限までに見つかった分は保存（検索語は未完了扱い）
+            lead["slug"] = finder.slugify(lead["name"], lead["place_id"])
+            db.upsert_lead(conn, lead)
+        raise
     for lead in leads:
         lead["slug"] = finder.slugify(lead["name"], lead["place_id"])
         db.upsert_lead(conn, lead)
@@ -44,7 +61,10 @@ def search_and_store(conn, query: str, max_results: int, min_reviews: int, inclu
 
 
 def cmd_search(args) -> None:
-    search_and_store(db.connect(), args.query, args.max, args.min_reviews, not args.no_sns)
+    try:
+        search_and_store(db.connect(), args.query, args.max, args.min_reviews, not args.no_sns)
+    except finder.QuotaExceeded as e:
+        print(e)
 
 
 def cmd_list(args) -> None:
@@ -106,10 +126,23 @@ def cmd_set_email(args) -> None:
 
 
 # ---------------------------------------------------------------- build / deploy
-def build_one(conn, row, preview: bool = True) -> Path:
+class NeedsContent(Exception):
+    pass
+
+
+def build_one(conn, row, preview: bool = True, template: bool = False) -> Path:
+    """文章は ①取り込み済み(content_json) ②Claude API ③テンプレ(template=True) の順で使う。"""
     lead = dict(row)
     print(f"サイト生成中: {lead['name']} ...", flush=True)
-    c = content.generate_site_content(lead)
+    if lead.get("content_json"):
+        c = json.loads(lead["content_json"])
+    elif content.has_credentials():
+        c = content.generate_site_content(lead)
+        db.update(conn, lead["place_id"], content_json=json.dumps(c, ensure_ascii=False))
+    elif template:
+        c = content._fallback_site_content(lead)
+    else:
+        raise NeedsContent("文章がまだありません（`briefs` → Claude に書いてもらう → `import-content`）")
     path = render.write_site(lead["slug"], render.render_site(lead, c, preview=preview), c)
     db.update(conn, lead["place_id"], site_path=str(path),
               status="built" if lead["status"] == "new" else lead["status"])
@@ -121,7 +154,7 @@ def cmd_build(args) -> None:
     conn = db.connect()
     for row in _targets(conn, args.keys, args.all, ["new"]):
         try:
-            build_one(conn, row)
+            build_one(conn, row, template=args.template)
         except Exception as e:  # 1件の失敗で全体を止めない
             print(f"  失敗: {row['name']}: {e}")
 
@@ -154,7 +187,11 @@ def cmd_deploy(args) -> None:
 # ---------------------------------------------------------------- draft / approve / send
 def draft_one(conn, row) -> None:
     lead = dict(row)
-    intro = content.generate_email_intro(lead)
+    saved = json.loads(lead.get("content_json") or "{}")
+    if saved.get("email_subject") and saved.get("email_opening"):
+        intro = {"subject": saved["email_subject"], "opening": saved["email_opening"]}
+    else:
+        intro = content.generate_email_intro(lead)
     body = mailer.build_body(lead, intro["opening"])
     db.update(conn, lead["place_id"], email_subject=intro["subject"], email_body=body, status="drafted")
     eml = mailer.save_eml(lead["slug"], mailer.build_message(lead["email"], intro["subject"], body))
@@ -275,6 +312,9 @@ def cmd_auto(args) -> None:
         try:
             found += search_and_store(conn, q, targets["max_results"], targets["min_reviews"],
                                       targets["include_sns"])
+        except finder.QuotaExceeded as e:
+            print(e)
+            break
         except Exception as e:
             print(f"  検索失敗: {q}: {e}")
     print(f"\n新しい候補 合計 {found} 件")
@@ -285,11 +325,16 @@ def cmd_auto(args) -> None:
 
 
 def process_pipeline(conn) -> None:
+    waiting = []
     for row in db.by_status(conn, ["new"]):
         try:
             build_one(conn, row)
+        except NeedsContent:
+            waiting.append(row)
         except Exception as e:
             print(f"  失敗: {row['name']}: {e}")
+    if waiting:
+        write_briefs(waiting)
     if settings.netlify_token or settings.preview_base_url:
         for row in db.by_status(conn, ["built"]):
             try:
@@ -300,6 +345,53 @@ def process_pipeline(conn) -> None:
         cmd_draft(argparse.Namespace(keys=[], all=True))
     print("\n次の手順: `review` で下書きを確認 → `approve` → `send --live`")
     print("メールアドレス未登録のお店は `export` → CSVに記入 → `import` → `draft --all`")
+
+
+# ---------------------------------------------------------------- APIキー無しで文章を作る
+def write_briefs(rows) -> None:
+    data = content.export_briefs([dict(r) for r in rows])
+    settings.briefs_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.briefs_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n文章待ちのお店 {len(rows)} 件 → {settings.briefs_path}")
+    print("Claude Code に「briefs.json の文章を書いて」と頼み、できたら `import-content output/contents.json`")
+
+
+def cmd_briefs(args) -> None:
+    conn = db.connect()
+    rows = [r for r in db.by_status(conn, ["new"]) if not r["content_json"]]
+    if not rows:
+        print("文章待ちのお店はありません")
+        return
+    write_briefs(rows)
+
+
+def cmd_import_content(args) -> None:
+    conn = db.connect()
+    data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    for slug, c in data.items():
+        row = db.get(conn, slug)
+        if not row:
+            print(f"見つかりません: {slug}")
+            continue
+        missing = content.validate_content(c)
+        if missing:
+            print(f"項目不足のためスキップ: {slug}: {', '.join(missing)}")
+            continue
+        db.update(conn, row["place_id"], content_json=json.dumps(c, ensure_ascii=False))
+        build_one(conn, db.get(conn, slug))
+    if settings.netlify_token or settings.preview_base_url:
+        for row in db.by_status(conn, ["built"]):
+            try:
+                deploy_one(conn, row)
+            except Exception as e:
+                print(f"  公開失敗: {row['name']}: {e}")
+
+
+def cmd_usage(args) -> None:
+    conn = db.connect()
+    print(f"今月の Google API 利用回数（無料枠は各1,000回）")
+    print(f"  検索: {db.usage(conn, 'search')} / 上限 {settings.places_search_monthly_limit}")
+    print(f"  詳細: {db.usage(conn, 'details')} / 上限 {settings.places_details_monthly_limit}")
 
 
 def cmd_demo(args) -> None:
@@ -351,8 +443,15 @@ def main(argv: list[str] | None = None) -> None:
                             ("approve", cmd_approve, "下書きを承認（drafted を対象）")]:
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("keys", nargs="*"); sp.add_argument("--all", action="store_true")
+        if name == "build":
+            sp.add_argument("--template", action="store_true", help="文章が無い店はテンプレ文章で作る")
         sp.set_defaults(f=fn)
 
+    sp = sub.add_parser("briefs", help="文章待ちのお店の依頼ファイルを作る（APIキー無しモード）")
+    sp.set_defaults(f=cmd_briefs)
+    sp = sub.add_parser("import-content", help="Claude が書いた文章を取り込んでサイト化")
+    sp.add_argument("file"); sp.set_defaults(f=cmd_import_content)
+    sp = sub.add_parser("usage", help="今月の Google API 利用回数"); sp.set_defaults(f=cmd_usage)
     sp = sub.add_parser("review", help="下書きメールを確認"); sp.set_defaults(f=cmd_review)
     sp = sub.add_parser("skip", help="対象外にする"); sp.add_argument("keys", nargs="+"); sp.add_argument("--reason")
     sp.set_defaults(f=cmd_skip)

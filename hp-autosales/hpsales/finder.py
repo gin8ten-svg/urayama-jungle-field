@@ -59,11 +59,20 @@ def _headers(fields: str) -> dict[str, str]:
     }
 
 
-def search(query: str, max_results: int = 60) -> list[dict[str, Any]]:
+class QuotaExceeded(Exception):
+    """無料枠を守るための月間上限に達した"""
+
+
+def _noop_guard(sku: str) -> None:
+    pass
+
+
+def search(query: str, max_results: int = 60, guard=_noop_guard) -> list[dict[str, Any]]:
     """Text Search（1ページ最大20件、最大3ページ）"""
     results: list[dict[str, Any]] = []
     body: dict[str, Any] = {"textQuery": query, "languageCode": "ja", "regionCode": "JP", "pageSize": 20}
     while len(results) < max_results:
+        guard("search")
         r = requests.post(SEARCH_URL, json=body, headers=_headers(SEARCH_FIELDS), timeout=30)
         r.raise_for_status()
         data = r.json()
@@ -76,7 +85,8 @@ def search(query: str, max_results: int = 60) -> list[dict[str, Any]]:
     return results[:max_results]
 
 
-def details(place_id: str) -> dict[str, Any]:
+def details(place_id: str, guard=_noop_guard) -> dict[str, Any]:
+    guard("details")
     r = requests.get(
         DETAILS_URL.format(place_id=place_id),
         params={"languageCode": "ja", "regionCode": "JP"},
@@ -105,13 +115,19 @@ def to_lead(place: dict[str, Any], query: str) -> dict[str, Any]:
 
 
 def find_leads(query: str, max_results: int = 60, min_reviews: int = 5,
-               include_sns: bool = True, skip_ids: set[str] | None = None) -> list[dict[str, Any]]:
+               include_sns: bool = True, skip_ids: set[str] | None = None,
+               guard=_noop_guard) -> list[dict[str, Any]]:
     """営業対象になりそうな店を返す。口コミが少なすぎる店（休眠・新規すぎ）は除外。
     skip_ids（登録済みの店）は詳細取得を省いて API 料金を節約する。"""
     targets = {"none", "sns_only", "portal_only"} if include_sns else {"none"}
     skip_ids = skip_ids or set()
     leads = []
-    for p in search(query, max_results):
+    try:
+        found = search(query, max_results, guard)
+    except QuotaExceeded as e:
+        e.partial = []
+        raise
+    for p in found:
         if p["id"] in skip_ids:
             continue
         if p.get("businessStatus", "OPERATIONAL") != "OPERATIONAL":
@@ -120,7 +136,11 @@ def find_leads(query: str, max_results: int = 60, min_reviews: int = 5,
             continue
         if (p.get("userRatingCount") or 0) < min_reviews:
             continue
-        leads.append(to_lead(details(p["id"]), query))
+        try:
+            leads.append(to_lead(details(p["id"], guard), query))
+        except QuotaExceeded as e:
+            e.partial = leads
+            raise
     return leads
 
 

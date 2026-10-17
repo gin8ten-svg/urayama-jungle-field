@@ -84,13 +84,13 @@ EMAIL_SYSTEM = """あなたは小さなお店向けにホームページ制作�
 - 件名は30字以内。「【ご提案】」などの煽りや絵文字は使わない。お店の名前を入れる。"""
 
 
-def _has_credentials() -> bool:
+def has_credentials() -> bool:
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         return True
     return os.path.isdir(os.path.expanduser("~/.config/anthropic"))
 
 
-def _shop_brief(lead: dict[str, Any]) -> str:
+def shop_brief(lead: dict[str, Any]) -> str:
     place = lead.get("place_json") or {}
     if isinstance(place, str):
         place = json.loads(place or "{}")
@@ -136,17 +136,17 @@ def _call_claude(system: str, user: str, schema: dict[str, Any]) -> dict[str, An
 
 
 def generate_site_content(lead: dict[str, Any]) -> dict[str, Any]:
-    if not _has_credentials():
+    if not has_credentials():
         return _fallback_site_content(lead)
     return _call_claude(
         SITE_SYSTEM,
-        "次のお店のホームページ用の文章を作ってください。\n\n" + _shop_brief(lead),
+        "次のお店のホームページ用の文章を作ってください。\n\n" + shop_brief(lead),
         SITE_SCHEMA,
     )
 
 
 def generate_email_intro(lead: dict[str, Any]) -> dict[str, Any]:
-    if not _has_credentials():
+    if not has_credentials():
         return {
             "subject": f"{lead['name']}様 ホームページ制作のご提案",
             "opening": (
@@ -157,9 +157,41 @@ def generate_email_intro(lead: dict[str, Any]) -> dict[str, Any]:
         }
     return _call_claude(
         EMAIL_SYSTEM,
-        "次のお店宛ての営業メールの件名と冒頭文を書いてください。\n\n" + _shop_brief(lead),
+        "次のお店宛ての営業メールの件名と冒頭文を書いてください。\n\n" + shop_brief(lead),
         EMAIL_SCHEMA,
     )
+
+
+CONTENT_INSTRUCTIONS = (
+    "各お店について、SITE_SCHEMA に従ったサイト文章と、営業メールの email_subject / email_opening を作り、"
+    "{slug: {...}} の形の JSON で output/contents.json に保存してください。"
+    "書き方のルールは site_rules / email_rules に従うこと。"
+)
+
+
+def export_briefs(leads: list[dict[str, Any]]) -> dict[str, Any]:
+    """APIキー無しで Claude（Claude Code やチャット）に文章を書いてもらうための依頼ファイル。"""
+    return {
+        "instructions": CONTENT_INSTRUCTIONS,
+        "site_rules": SITE_SYSTEM,
+        "email_rules": EMAIL_SYSTEM,
+        "schema": {**SITE_SCHEMA, "properties": {
+            **SITE_SCHEMA["properties"],
+            "email_subject": EMAIL_SCHEMA["properties"]["subject"],
+            "email_opening": EMAIL_SCHEMA["properties"]["opening"],
+        }},
+        "shops": [{"slug": l["slug"], "info": json.loads(shop_brief(l))} for l in leads],
+    }
+
+
+REQUIRED_SITE_KEYS = [k for k in SITE_SCHEMA["required"]]
+
+
+def validate_content(c: dict[str, Any]) -> list[str]:
+    missing = [k for k in REQUIRED_SITE_KEYS if k not in c]
+    if c.get("theme") not in THEMES:
+        c["theme"] = "warm"
+    return missing
 
 
 def _fallback_site_content(lead: dict[str, Any]) -> dict[str, Any]:
