@@ -38,7 +38,7 @@ jobs:
       - name: 公開するファイルだけを集める
         run: |
           mkdir _site
-          cp index.html _site/
+          cp index.html og-image.jpg _site/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

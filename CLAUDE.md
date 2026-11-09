@@ -15,6 +15,8 @@
   `sed -E 's/data:image[^"'"'"')]{200,}/DATAURI/g' index.html > <scratchpad>/stripped.html`
 - 編集は Edit で該当箇所だけを書き換える（data URI を含む行を書き直さない）。
 - 新しい画像を埋め込むときは、幅 1600px 以下・JPEG/WebP に圧縮してから。`index.html` 全体で 2MB を超えないようにする。
+- 例外：SNS シェア用画像 `og-image.jpg`（1200×630）だけは別ファイル（OGP は data URI を読めないため）。ヒーローの見出しや背景を変えたら作り直す。公開物に含めるファイルは `.github/workflows/pages.yml` の `cp` 行で管理する。
+- 公開 URL：https://gin8ten-svg.github.io/urayama-jungle-field/ （`canonical` / `og:url` / `og:image` もこれに合わせる）
 
 ## デザインのルール
 - 色は `:root` の変数だけを使う。新色を足すときは変数として追加する。
