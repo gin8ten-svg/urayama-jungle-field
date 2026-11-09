@@ -1,4 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ジャングル開拓記 | 浦山銀路</title>
+<meta name="description" content="2026年夏オープンを目指して、鬱蒼としたジャングルをゼロから開拓中のキャンプ場「URAYAMA JUNGLE FIELD」。道も看板も水場も、全部この手でつくっています。">
+<meta name="theme-color" content="#12200F">
+<link rel="canonical" href="https://gin8ten-svg.github.io/urayama-jungle-field/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="URAYAMA JUNGLE FIELD">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://gin8ten-svg.github.io/urayama-jungle-field/">
+<meta property="og:title" content="ジャングル開拓記 | 浦山銀路">
+<meta property="og:description" content="2026年夏オープンを目指して、鬱蒼としたジャングルをゼロから開拓中のキャンプ場。道も看板も水場も、全部この手でつくっています。">
+<meta property="og:image" content="https://gin8ten-svg.github.io/urayama-jungle-field/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="密林の中に「草をかき分け、密林を切り拓く。」の見出し">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B4%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --deep:#12200F;
@@ -141,7 +160,7 @@
   }
   .stat-leaf:nth-child(even){transform:rotate(2deg); background:var(--paper);}
   .stat-leaf b{display:block; font-size:1.7rem; line-height:1.1; font-variant-numeric:tabular-nums;}
-  .stat-leaf span{font-size:0.68rem; font-weight:700;}
+  .stat-leaf span{font-size:0.72rem; font-weight:700;}
 
   .area-map{
     position:relative; z-index:6; margin-top:20px;
@@ -153,7 +172,7 @@
     box-shadow:6px 6px 0 rgba(0,0,0,0.4);
     overflow:hidden;
   }
-  .area-pin{position:absolute; background:var(--red); color:#fff; font-size:0.68rem; font-weight:900; padding:5px 12px; border-radius:20px; box-shadow:2px 2px 0 rgba(0,0,0,0.4); white-space:nowrap;}
+  .area-pin{position:absolute; background:var(--red); color:#fff; font-size:0.72rem; font-weight:900; padding:5px 12px; border-radius:20px; box-shadow:2px 2px 0 rgba(0,0,0,0.4); white-space:nowrap;}
   .area-pin::before{content:'📍'; margin-right:4px;}
 
   footer{
@@ -163,8 +182,8 @@
   }
   footer .handle{font-size:1.7rem; color:var(--lime); margin-bottom:16px; text-shadow:0 0 20px rgba(198,232,90,0.3);}
   .socials{display:flex; gap:26px; justify-content:center; font-size:0.82rem; flex-wrap:wrap;}
-  .socials span{cursor:pointer; transition:color 0.2s ease;}
-  .socials span:hover{color:var(--lime);}
+  .socials a, .socials span{color:inherit; text-decoration:none; cursor:pointer; transition:color 0.2s ease;}
+  .socials a:hover, .socials span:hover{color:var(--lime);}
 
   a, button, .socials span, [tabindex]{outline-offset:3px;}
   a:focus-visible, button:focus-visible, .socials span:focus-visible{outline:2px solid var(--lime);}
@@ -175,8 +194,12 @@
 
   @media(max-width:720px){
     .board-grid{grid-template-columns:1fr;}
+    header{gap:12px; font-size:0.7rem;}
+    .hero{flex-wrap:wrap; align-content:center; gap:8px; padding-bottom:90px;}
+    .hero-content{order:-1; flex:1 1 100%; margin-bottom:12px;}
     .arrow-sign{position:static; display:inline-block; margin:4px 6px 0 0; transform:none;}
     .fol-left, .fol-right{opacity:0.4;}
+    .area-map{aspect-ratio:4/3;}
   }
 </style>
 
@@ -304,5 +327,5 @@
 
 <footer>
   <div class="handle carved">🌴 @ginji.campfield</div>
-  <div class="socials"><span tabindex="0">Instagram</span><span tabindex="0">YouTube</span><span tabindex="0">お問い合わせ</span></div>
+  <div class="socials"><a href="https://www.instagram.com/ginji.campfield/" target="_blank" rel="noopener">Instagram</a><span tabindex="0">YouTube</span><span tabindex="0">お問い合わせ</span></div>
 </footer>
