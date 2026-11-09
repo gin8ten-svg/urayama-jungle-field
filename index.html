@@ -1,4 +1,11 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ジャングル開拓記 | 浦山銀路</title>
+<meta name="description" content="2026年夏オープンを目指して、鬱蒼としたジャングルをゼロから開拓中のキャンプ場「URAYAMA JUNGLE FIELD」。道も看板も水場も、全部この手でつくっています。">
+<meta name="theme-color" content="#12200F">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B4%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --deep:#12200F;
@@ -141,7 +148,7 @@
   }
   .stat-leaf:nth-child(even){transform:rotate(2deg); background:var(--paper);}
   .stat-leaf b{display:block; font-size:1.7rem; line-height:1.1; font-variant-numeric:tabular-nums;}
-  .stat-leaf span{font-size:0.68rem; font-weight:700;}
+  .stat-leaf span{font-size:0.72rem; font-weight:700;}
 
   .area-map{
     position:relative; z-index:6; margin-top:20px;
@@ -153,7 +160,7 @@
     box-shadow:6px 6px 0 rgba(0,0,0,0.4);
     overflow:hidden;
   }
-  .area-pin{position:absolute; background:var(--red); color:#fff; font-size:0.68rem; font-weight:900; padding:5px 12px; border-radius:20px; box-shadow:2px 2px 0 rgba(0,0,0,0.4); white-space:nowrap;}
+  .area-pin{position:absolute; background:var(--red); color:#fff; font-size:0.72rem; font-weight:900; padding:5px 12px; border-radius:20px; box-shadow:2px 2px 0 rgba(0,0,0,0.4); white-space:nowrap;}
   .area-pin::before{content:'📍'; margin-right:4px;}
 
   footer{
@@ -175,8 +182,12 @@
 
   @media(max-width:720px){
     .board-grid{grid-template-columns:1fr;}
+    header{gap:12px; font-size:0.7rem;}
+    .hero{flex-wrap:wrap; align-content:center; gap:8px; padding-bottom:90px;}
+    .hero-content{order:-1; flex:1 1 100%; margin-bottom:12px;}
     .arrow-sign{position:static; display:inline-block; margin:4px 6px 0 0; transform:none;}
     .fol-left, .fol-right{opacity:0.4;}
+    .area-map{aspect-ratio:4/3;}
   }
 </style>
 
